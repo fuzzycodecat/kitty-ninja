@@ -1,0 +1,763 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🐱 Kitty Ninja vs Zombies! 🧟</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: 'Arial', sans-serif;
+            text-align: center;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+        .container {
+            max-width: 900px;
+            width: 100%;
+        }
+        h1 {
+            color: #fff;
+            text-shadow: 3px 3px 6px rgba(0,0,0,0.4);
+            font-size: 3em;
+            margin-bottom: 20px;
+            animation: bounce 1s infinite;
+        }
+        @keyframes bounce {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-10px); }
+        }
+        canvas {
+            border: 6px solid #fff;
+            border-radius: 20px;
+            background: #87ceeb;
+            display: block !important;
+            visibility: visible !important;
+            margin: 0 auto;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.3);
+            max-width: 100%;
+            height: auto;
+        }
+        .game-ui {
+            display: flex;
+            justify-content: space-around;
+            flex-wrap: wrap;
+            color: white;
+            font-size: 1.2em;
+            margin: 15px 0;
+            font-weight: bold;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
+            background: rgba(0,0,0,0.3);
+            padding: 15px;
+            border-radius: 15px;
+            gap: 15px;
+        }
+        .controls {
+            margin: 20px 0;
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+        button {
+            background: linear-gradient(135deg, #ff6b9d, #ff5252);
+            color: white;
+            border: 3px solid #fff;
+            padding: 12px 24px;
+            font-size: 1em;
+            border-radius: 25px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: all 0.3s;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+        }
+        button:hover {
+            transform: scale(1.08);
+            box-shadow: 0 6px 20px rgba(0,0,0,0.3);
+        }
+        button:active {
+            transform: scale(0.95);
+        }
+        .hidden {
+            display: none !important;
+        }
+        .weapon-display {
+            font-size: 0.9em;
+            background: rgba(255, 255, 255, 0.2);
+            padding: 8px 12px;
+            border-radius: 8px;
+            color: white;
+            font-weight: bold;
+            text-shadow: 1px 1px 2px rgba(0,0,0,0.5);
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🐱 Kitty Ninja vs Zombies! 🧟</h1>
+        <canvas id="gameCanvas" width="800" height="600"></canvas>
+        <div class="game-ui">
+            <div id="score">Score: 0</div>
+            <div id="level">Level: 1</div>
+            <div id="lives">Lives: ❤️❤️❤️</div>
+            <div class="weapon-display">Weapon: <span id="weaponDisplay">⭐ Star</span> (SPACE)</div>
+        </div>
+        <div class="controls">
+            <button id="menuBtn" onclick="goToMenu()">📋 Menu</button>
+            <button id="pauseBtn" onclick="togglePause()" class="hidden">⏸ Pause</button>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        
+        // Weapon Types
+        const WEAPONS = {
+            STAR: { name: '⭐ Star', damage: 1, speed: 6, size: 8, color: '#FF1493', fireRate: 150 },
+            BOMB: { name: '💣 Bomb', damage: 3, speed: 4, size: 10, color: '#000000', fireRate: 400, hasExplosion: true, explosionRadius: 50 },
+            LASER: { name: '⚡ Laser', damage: 1, speed: 8, size: 6, color: '#00FF00', fireRate: 100, isLaser: true },
+            FIREBALL: { name: '🔥 Fireball', damage: 2, speed: 5, size: 12, color: '#FF6347', fireRate: 200, hasTrail: true },
+            WIND: { name: '💨 Wind', damage: 2, speed: 7, size: 7, color: '#87CEEB', fireRate: 120, hasWave: true }
+        };
+        
+        // Zombie Types
+        const ZOMBIE_TYPES = {
+            NORMAL: { speed: 1, color: '#228b22', health: 1, rarity: 0.6 },
+            FAST: { speed: 2.5, color: '#ff6b6b', health: 1, rarity: 0.25 },
+            TANK: { speed: 0.5, color: '#8b4513', health: 3, rarity: 0.15 }
+        };
+        
+        // Game States
+        const STATES = {
+            MENU: 'menu',
+            DIFFICULTY: 'difficulty',
+            PLAYING: 'playing',
+            LEVEL_COMPLETE: 'levelComplete',
+            GAME_OVER: 'gameOver',
+            PAUSED: 'paused',
+            GAME_WON: 'gameWon'
+        };
+        
+        // Difficulty Settings
+        const DIFFICULTIES = {
+            EASY: { name: 'Easy', zombieSpeed: 1, maxZombies: 4, spawnRate: 0.015, multiplier: 1 },
+            NORMAL: { name: 'Normal', zombieSpeed: 1.5, maxZombies: 6, spawnRate: 0.02, multiplier: 1.5 },
+            HARD: { name: 'Hard', zombieSpeed: 2.5, maxZombies: 10, spawnRate: 0.035, multiplier: 2.5 }
+        };
+        
+        // Level Themes
+        const LEVELS = [
+            { name: 'Forest', bg: '#2d5016', ground: '#1a2e0f', pattern: 'trees' },
+            { name: 'City', bg: '#87ceeb', ground: '#8b7355', pattern: 'buildings' },
+            { name: 'Graveyard', bg: '#2a2a3a', ground: '#1a1a2a', pattern: 'graves' },
+            { name: 'Castle', bg: '#4a5a7a', ground: '#3a4a5a', pattern: 'walls' },
+            { name: 'Space', bg: '#000814', ground: '#1a2a4a', pattern: 'stars' }
+        ];
+        
+        // Game State
+        let gameState = STATES.MENU;
+        let currentDifficulty = DIFFICULTIES.NORMAL;
+        let currentLevel = 0;
+        let score = 0;
+        let totalScore = 0;
+        let lives = 3;
+        let isPaused = false;
+        let weaponIndex = 0;
+        let currentWeapon = WEAPONS.STAR;
+        
+        // Game Objects
+        let kitty = { x: 100, y: 300 };
+        let weapons = [];
+        let zombies = [];
+        let particles = [];
+        let confetti = [];
+        let zombieKillCount = 0;
+        let lastShot = 0;
+        let mouseX = canvas.width / 2;
+        let mouseY = canvas.height / 2;
+        let mouseDown = false;
+        
+        // Event listeners
+        document.addEventListener('mousemove', (e) => {
+            const rect = canvas.getBoundingClientRect();
+            mouseX = e.clientX - rect.left;
+            mouseY = e.clientY - rect.top;
+        });
+        document.addEventListener('mousedown', () => { mouseDown = true; });
+        document.addEventListener('mouseup', () => { mouseDown = false; });
+        document.addEventListener('keydown', (e) => {
+            if (e.code === 'Space') { switchWeapon(); e.preventDefault(); }
+        });
+        
+        function switchWeapon() {
+            const weaponList = Object.values(WEAPONS);
+            weaponIndex = (weaponIndex + 1) % weaponList.length;
+            currentWeapon = weaponList[weaponIndex];
+            document.getElementById('weaponDisplay').textContent = currentWeapon.name;
+        }
+        
+        // Game functions
+        function startGame() { gameState = STATES.MENU; gameLoop(); }
+        function selectDifficulty(difficulty) { currentDifficulty = difficulty; currentLevel = 0; totalScore = 0; startLevel(); }
+        function startLevel() {
+            gameState = STATES.PLAYING;
+            isPaused = false;
+            score = 0;
+            lives = 3;
+            zombieKillCount = 0;
+            weaponIndex = 0;
+            currentWeapon = WEAPONS.STAR;
+            document.getElementById('weaponDisplay').textContent = currentWeapon.name;
+            kitty = { x: 100, y: 300 };
+            weapons = [];
+            zombies = [];
+            particles = [];
+            confetti = [];
+            document.getElementById('pauseBtn').classList.remove('hidden');
+        }
+        function goToMenu() { gameState = STATES.MENU; document.getElementById('pauseBtn').classList.add('hidden'); }
+        function togglePause() { if (gameState === STATES.PLAYING) { isPaused = !isPaused; document.getElementById('pauseBtn').textContent = isPaused ? '▶ Resume' : '⏸ Pause'; } }
+        function nextLevel() { totalScore += score; currentLevel++; if (currentLevel >= LEVELS.length) { gameState = STATES.GAME_WON; } else { startLevel(); } }
+        function updateUI() {
+            document.getElementById('score').textContent = `Score: ${score}`;
+            document.getElementById('level').textContent = `Level: ${currentLevel + 1}/${LEVELS.length}`;
+            document.getElementById('lives').textContent = `Lives: ${'❤️'.repeat(Math.max(0, lives))}`;
+        }
+        
+        // ============ MENU BACKGROUND ANIMATION ============
+        let menuParticles = [];
+        
+        function initMenuParticles() {
+            menuParticles = [];
+            const emojis = ['🐱', '🐱', '⭐', '🔪', '🌀', '🌸', '💫', '✨', '🗡️', '🎯', '💥', '⚔️'];
+            for (let i = 0; i < 25; i++) {
+                menuParticles.push({
+                    x: Math.random() * canvas.width,
+                    y: Math.random() * canvas.height,
+                    vx: (Math.random() - 0.5) * 0.8,
+                    vy: (Math.random() - 0.5) * 0.8 - 0.2,
+                    size: Math.random() * 18 + 12,
+                    rotation: Math.random() * Math.PI * 2,
+                    rotVel: (Math.random() - 0.5) * 0.02,
+                    alpha: Math.random() * 0.4 + 0.2,
+                    emoji: emojis[Math.floor(Math.random() * emojis.length)],
+                    type: Math.random() > 0.5 ? 'emoji' : 'shuriken',
+                    color: ['#FF1493', '#FFD700', '#00CED1', '#FF6B9D', '#7B68EE', '#FF4500'][Math.floor(Math.random() * 6)]
+                });
+            }
+        }
+
+        function updateMenuParticles() {
+            for (let p of menuParticles) {
+                p.x += p.vx;
+                p.y += p.vy;
+                p.rotation += p.rotVel;
+                p.vy += 0.003; // gentle downward drift
+                // Wrap around screen
+                if (p.x < -40) p.x = canvas.width + 40;
+                if (p.x > canvas.width + 40) p.x = -40;
+                if (p.y < -40) p.y = canvas.height + 40;
+                if (p.y > canvas.height + 40) p.y = -40;
+            }
+        }
+
+        function drawMenuBackground() {
+            // Animated gradient background with slow color cycling
+            const gradient = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
+            const hue = (Date.now() / 3000) % 360;
+            gradient.addColorStop(0, `hsl(${hue}, 65%, 35%)`);
+            gradient.addColorStop(0.5, `hsl(${(hue + 60) % 360}, 65%, 30%)`);
+            gradient.addColorStop(1, `hsl(${(hue + 120) % 360}, 65%, 40%)`);
+            ctx.fillStyle = gradient;
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // Floating stars sparkles
+            const starTime = Date.now() / 1000;
+            for (let i = 0; i < 12; i++) {
+                const sx = ((i * 70 + starTime * 30) % (canvas.width + 40)) - 20;
+                const sy = ((i * 53 + starTime * 20) % (canvas.height)) - 10;
+                const starAlpha = 0.1 + Math.sin(i + starTime * 2) * 0.08;
+                ctx.fillStyle = `rgba(255, 255, 255, ${starAlpha})`;
+                ctx.beginPath();
+                ctx.arc(sx, sy, 2, 0, Math.PI * 2);
+                ctx.fill();
+            }
+
+            // Draw floating particles
+            updateMenuParticles();
+            for (let p of menuParticles) {
+                ctx.save();
+                ctx.translate(p.x, p.y);
+                ctx.rotate(p.rotation);
+                ctx.globalAlpha = p.alpha;
+
+                if (p.type === 'emoji') {
+                    ctx.font = `${p.size}px Arial`;
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'middle';
+                    ctx.fillText(p.emoji, 0, 0);
+                } else {
+                    // Draw a ninja shuriken
+                    ctx.strokeStyle = p.color;
+                    ctx.fillStyle = p.color;
+                    ctx.lineWidth = 2;
+                    ctx.globalAlpha = p.alpha * 0.7;
+                    const s = p.size * 0.5;
+                    for (let j = 0; j < 4; j++) {
+                        ctx.rotate(Math.PI / 2);
+                        ctx.beginPath();
+                        ctx.moveTo(0, 0);
+                        ctx.lineTo(s * 0.5, -s * 0.8);
+                        ctx.lineTo(0, -s * 0.3);
+                        ctx.lineTo(-s * 0.5, -s * 0.8);
+                        ctx.closePath();
+                        ctx.fill();
+                    }
+                }
+                ctx.restore();
+            }
+            ctx.globalAlpha = 1;
+
+            // Dark vignette overlay around edges
+            const vignette = ctx.createRadialGradient(
+                canvas.width / 2, canvas.height / 2, 80,
+                canvas.width / 2, canvas.height / 2, canvas.width * 0.7
+            );
+            vignette.addColorStop(0, 'rgba(0,0,0,0)');
+            vignette.addColorStop(1, 'rgba(0,0,0,0.4)');
+            ctx.fillStyle = vignette;
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // Floating paw print trail at bottom
+            ctx.fillStyle = 'rgba(255,255,255,0.04)';
+            const pawTime = Date.now() / 3000;
+            for (let i = 0; i < 10; i++) {
+                const px = ((i * 100 + pawTime * 60) % (canvas.width + 120)) - 60;
+                const py = canvas.height - 50 + Math.sin(i * 1.2 + pawTime * 1.5) * 12;
+                ctx.beginPath();
+                ctx.arc(px - 8, py - 5, 5, 0, Math.PI * 2);
+                ctx.arc(px + 8, py - 5, 5, 0, Math.PI * 2);
+                ctx.arc(px - 11, py + 5, 4, 0, Math.PI * 2);
+                ctx.arc(px + 11, py + 5, 4, 0, Math.PI * 2);
+                ctx.arc(px, py, 7, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        }
+        
+        // ============================
+        
+        // Drawing
+        function drawBackground() {
+            const level = LEVELS[currentLevel];
+            ctx.fillStyle = level.bg;
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            ctx.fillStyle = level.ground;
+            ctx.fillRect(0, canvas.height / 2 + 50, canvas.width, canvas.height / 2 - 50);
+            
+            if (level.pattern === 'trees') {
+                ctx.fillStyle = '#3a5a1a';
+                for (let i = 0; i < 5; i++) {
+                    const x = (i * 200 - (Date.now() / 50)) % (canvas.width + 100);
+                    ctx.fillRect(x - 5, 200, 10, 150);
+                    ctx.fillStyle = '#2a4a0a';
+                    ctx.beginPath();
+                    ctx.arc(x, 180, 40, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.fillStyle = '#3a5a1a';
+                }
+            }
+        }
+        
+        function drawKitty() {
+            ctx.fillStyle = '#FFA500';
+            ctx.beginPath();
+            ctx.arc(kitty.x, kitty.y, 18, 0, Math.PI * 2);
+            ctx.fill();
+            
+            const earOffset = Math.sin(Date.now() / 300) * 3;
+            ctx.fillStyle = '#FFD700';
+            ctx.beginPath();
+            ctx.moveTo(kitty.x - 12, kitty.y - 18);
+            ctx.lineTo(kitty.x - 8, kitty.y - 35 + earOffset);
+            ctx.lineTo(kitty.x - 4, kitty.y - 18);
+            ctx.fill();
+            ctx.beginPath();
+            ctx.moveTo(kitty.x + 12, kitty.y - 18);
+            ctx.lineTo(kitty.x + 8, kitty.y - 35 - earOffset);
+            ctx.lineTo(kitty.x + 4, kitty.y - 18);
+            ctx.fill();
+            
+            ctx.fillStyle = '#000';
+            ctx.beginPath();
+            ctx.arc(kitty.x - 7, kitty.y - 5, 4, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.beginPath();
+            ctx.arc(kitty.x + 7, kitty.y - 5, 4, 0, Math.PI * 2);
+            ctx.fill();
+            
+            ctx.fillStyle = '#FF69B4';
+            ctx.beginPath();
+            ctx.arc(kitty.x, kitty.y + 3, 3, 0, Math.PI * 2);
+            ctx.fill();
+        }
+        
+        function drawZombie(zombie) {
+            ctx.fillStyle = zombie.type.color;
+            ctx.fillRect(zombie.x - 14, zombie.y - 5, 28, 35);
+            
+            ctx.fillStyle = '#a0c878';
+            ctx.beginPath();
+            ctx.arc(zombie.x, zombie.y - 25, 18, 0, Math.PI * 2);
+            ctx.fill();
+            
+            ctx.fillStyle = '#FF0000';
+            ctx.beginPath();
+            ctx.arc(zombie.x - 8, zombie.y - 28, 6, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.beginPath();
+            ctx.arc(zombie.x + 8, zombie.y - 28, 6, 0, Math.PI * 2);
+            ctx.fill();
+            
+            ctx.fillStyle = '#000';
+            ctx.beginPath();
+            ctx.arc(zombie.x - 8, zombie.y - 28, 3, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.beginPath();
+            ctx.arc(zombie.x + 8, zombie.y - 28, 3, 0, Math.PI * 2);
+            ctx.fill();
+            
+            if (zombie.type === ZOMBIE_TYPES.TANK) {
+                ctx.fillStyle = '#FFD700';
+                ctx.fillRect(zombie.x - 20, zombie.y - 40, 40 * zombie.health / ZOMBIE_TYPES.TANK.health, 4);
+                ctx.strokeStyle = '#fff';
+                ctx.strokeRect(zombie.x - 20, zombie.y - 40, 40, 4);
+            }
+        }
+        
+        function drawWeapon(w) {
+            ctx.fillStyle = w.weapon.color;
+            if (w.weapon.isLaser) {
+                ctx.strokeStyle = w.weapon.color;
+                ctx.lineWidth = 3;
+                ctx.globalAlpha = 0.8;
+                ctx.beginPath();
+                ctx.moveTo(w.x - w.vx * 2, w.y - w.vy * 2);
+                ctx.lineTo(w.x, w.y);
+                ctx.stroke();
+                ctx.globalAlpha = 1;
+            } else {
+                ctx.save();
+                ctx.translate(w.x, w.y);
+                const angle = Math.atan2(w.vy, w.vx);
+                ctx.rotate(angle);
+                ctx.beginPath();
+                ctx.moveTo(0, -w.weapon.size);
+                ctx.lineTo(w.weapon.size / 2, 0);
+                ctx.lineTo(0, w.weapon.size);
+                ctx.lineTo(-w.weapon.size / 2, 0);
+                ctx.closePath();
+                ctx.fill();
+                ctx.restore();
+            }
+        }
+        
+        function drawMenu() {
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            ctx.fillStyle = '#fff';
+            ctx.font = 'bold 48px Arial';
+            ctx.textAlign = 'center';
+            ctx.fillText('🐱 Kitty Ninja vs Zombies! 🧟', canvas.width / 2, 100);
+            ctx.font = '24px Arial';
+            ctx.fillText('Select Difficulty', canvas.width / 2, 200);
+            
+            drawButton((canvas.width - 450) / 2, 280, 150, 60, 'EASY', '#4CAF50', DIFFICULTIES.EASY);
+            drawButton((canvas.width - 450) / 2 + 170, 280, 150, 60, 'NORMAL', '#FFC107', DIFFICULTIES.NORMAL);
+            drawButton((canvas.width - 450) / 2 + 340, 280, 150, 60, 'HARD', '#F44336', DIFFICULTIES.HARD);
+            
+            ctx.font = '14px Arial';
+            ctx.fillStyle = '#aaa';
+            ctx.fillText('Move mouse to aim • Click to shoot • Press SPACE for weapon', canvas.width / 2, canvas.height - 30);
+        }
+        
+        function drawButton(x, y, w, h, text, color, difficulty) {
+            ctx.fillStyle = color;
+            ctx.fillRect(x, y, w, h);
+            ctx.strokeStyle = '#fff';
+            ctx.lineWidth = 3;
+            ctx.strokeRect(x, y, w, h);
+            ctx.fillStyle = '#fff';
+            ctx.font = 'bold 18px Arial';
+            ctx.textAlign = 'center';
+            ctx.fillText(text, x + w / 2, y + h / 2 + 8);
+            
+            if (mouseDown && mouseX >= x && mouseX <= x + w && mouseY >= y && mouseY <= y + h) {
+                selectDifficulty(difficulty);
+            }
+        }
+        
+        function drawLevelComplete() {
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            ctx.fillStyle = '#FFD700';
+            ctx.font = 'bold 56px Arial';
+            ctx.textAlign = 'center';
+            ctx.fillText('🎉 Level Complete! 🎉', canvas.width / 2, 150);
+            ctx.fillStyle = '#fff';
+            ctx.font = '32px Arial';
+            ctx.fillText(`Score: ${score}`, canvas.width / 2, 280);
+            
+            if (currentLevel < LEVELS.length - 1) {
+                ctx.fillStyle = '#4CAF50';
+                ctx.fillRect(canvas.width / 2 - 120, 380, 240, 60);
+                ctx.fillStyle = '#fff';
+                ctx.font = 'bold 24px Arial';
+                ctx.fillText('Next Level ⬇', canvas.width / 2, 420);
+                
+                if (mouseDown && mouseX >= canvas.width / 2 - 120 && mouseX <= canvas.width / 2 + 120 && mouseY >= 380 && mouseY <= 440) {
+                    nextLevel();
+                }
+            }
+        }
+        
+        function drawGameOver() {
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            ctx.fillStyle = '#FF0000';
+            ctx.font = 'bold 56px Arial';
+            ctx.textAlign = 'center';
+            ctx.fillText('💀 Game Over! 💀', canvas.width / 2, 150);
+            ctx.fillStyle = '#fff';
+            ctx.font = '32px Arial';
+            ctx.fillText(`Level Reached: ${currentLevel + 1}`, canvas.width / 2, 250);
+            ctx.fillText(`Final Score: ${totalScore + score}`, canvas.width / 2, 320);
+        }
+        
+        function createConfetti() {
+            for (let i = 0; i < 60; i++) {
+                confetti.push({
+                    x: Math.random() * canvas.width,
+                    y: -10,
+                    vx: (Math.random() - 0.5) * 4,
+                    vy: Math.random() * 3 + 2,
+                    size: Math.random() * 5 + 3,
+                    color: ['#FF6B9D', '#00CED1', '#FFD700', '#FF69B4', '#00FF00'][Math.floor(Math.random() * 5)],
+                    rotation: Math.random() * Math.PI * 2,
+                    rotVel: (Math.random() - 0.5) * 0.2
+                });
+            }
+        }
+        
+        function updateConfetti() {
+            for (let i = confetti.length - 1; i >= 0; i--) {
+                confetti[i].y += confetti[i].vy;
+                confetti[i].x += confetti[i].vx;
+                confetti[i].vy += 0.1;
+                confetti[i].rotation += confetti[i].rotVel;
+                if (confetti[i].y > canvas.height) confetti.splice(i, 1);
+            }
+        }
+        
+        function drawConfetti() {
+            confetti.forEach(c => {
+                ctx.save();
+                ctx.translate(c.x, c.y);
+                ctx.rotate(c.rotation);
+                ctx.fillStyle = c.color;
+                ctx.fillRect(-c.size / 2, -c.size / 2, c.size, c.size);
+                ctx.restore();
+            });
+        }
+        
+        function drawGameWon() {
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            drawConfetti();
+            
+            ctx.fillStyle = '#FFD700';
+            ctx.font = 'bold 72px Arial';
+            ctx.textAlign = 'center';
+            ctx.shadowColor = 'rgba(0,0,0,0.5)';
+            ctx.shadowBlur = 15;
+            ctx.fillText('🏆 YOU WON! 🏆', canvas.width / 2, 150);
+            ctx.shadowColor = 'transparent';
+            
+            ctx.fillStyle = '#fff';
+            ctx.font = 'bold 40px Arial';
+            ctx.fillText('All Levels Complete!', canvas.width / 2, 250);
+            ctx.font = '36px Arial';
+            ctx.fillText(`Final Score: ${totalScore + score}`, canvas.width / 2, 330);
+            
+            const time = (Date.now() / 500) % 2;
+            ctx.fillStyle = `rgba(255, 215, 0, ${0.5 + Math.sin(time * Math.PI) * 0.5})`;
+            ctx.font = 'bold 28px Arial';
+            ctx.fillText('Amazing Job, Kitty! 🎮', canvas.width / 2, 420);
+        }
+        
+        // Update functions
+        function updateKitty() {
+            kitty.x = Math.max(30, Math.min(canvas.width - 30, mouseX));
+            kitty.y = Math.max(30, Math.min(canvas.height - 30, mouseY));
+        }
+        
+        function shootWeapon() {
+            const now = Date.now();
+            if (now - lastShot > currentWeapon.fireRate) {
+                lastShot = now;
+                const angle = Math.atan2(mouseY - kitty.y, mouseX - kitty.x);
+                weapons.push({
+                    x: kitty.x, y: kitty.y,
+                    vx: Math.cos(angle) * currentWeapon.speed,
+                    vy: Math.sin(angle) * currentWeapon.speed,
+                    lifetime: 0, weapon: currentWeapon
+                });
+            }
+        }
+        
+        function updateWeapons() {
+            for (let i = weapons.length - 1; i >= 0; i--) {
+                weapons[i].x += weapons[i].vx;
+                weapons[i].y += weapons[i].vy;
+                weapons[i].lifetime++;
+                if (weapons[i].x < 0 || weapons[i].x > canvas.width || weapons[i].y < 0 || weapons[i].y > canvas.height || weapons[i].lifetime > 120) {
+                    weapons.splice(i, 1);
+                }
+            }
+        }
+        
+        function spawnZombies() {
+            const targetZombies = 5 + (currentLevel * 3);
+            if (zombieKillCount < targetZombies && zombies.length < currentDifficulty.maxZombies && Math.random() < currentDifficulty.spawnRate) {
+                const rand = Math.random();
+                let type = ZOMBIE_TYPES.NORMAL;
+                if (rand > (1 - ZOMBIE_TYPES.FAST.rarity)) type = ZOMBIE_TYPES.FAST;
+                else if (rand > (1 - ZOMBIE_TYPES.TANK.rarity)) type = ZOMBIE_TYPES.TANK;
+                
+                zombies.push({
+                    x: canvas.width + 20, y: Math.random() * (canvas.height - 150) + 100,
+                    type: type, health: type.health
+                });
+            }
+        }
+        
+        function updateZombies() {
+            for (let i = 0; i < zombies.length; i++) {
+                zombies[i].x -= zombies[i].type.speed * currentDifficulty.zombieSpeed;
+                if (zombies[i].x < 0) {
+                    lives--;
+                    zombies.splice(i, 1);
+                    i--;
+                    updateUI();
+                    if (lives <= 0) gameState = STATES.GAME_OVER;
+                }
+            }
+        }
+        
+        function checkCollisions() {
+            for (let i = weapons.length - 1; i >= 0; i--) {
+                for (let j = zombies.length - 1; j >= 0; j--) {
+                    const dx = weapons[i].x - zombies[j].x;
+                    const dy = weapons[i].y - zombies[j].y;
+                    const dist = Math.sqrt(dx * dx + dy * dy);
+                    
+                    if (dist < 28) {
+                        zombies[j].health -= weapons[i].weapon.damage;
+                        if (zombies[j].health <= 0) {
+                            zombieKillCount++;
+                            score += (10 * weapons[i].weapon.damage) * currentDifficulty.multiplier;
+                            zombies.splice(j, 1);
+                            
+                            const targetZombies = 5 + (currentLevel * 3);
+                            if (zombieKillCount >= targetZombies && zombies.length === 0) {
+                                gameState = STATES.LEVEL_COMPLETE;
+                            }
+                        }
+                        weapons.splice(i, 1);
+                        updateUI();
+                        break;
+                    }
+                }
+            }
+            
+            for (let i = zombies.length - 1; i >= 0; i--) {
+                const dx = kitty.x - zombies[i].x;
+                const dy = kitty.y - zombies[i].y;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+                
+                if (dist < 35) {
+                    lives--;
+                    zombies.splice(i, 1);
+                    updateUI();
+                    if (lives <= 0) gameState = STATES.GAME_OVER;
+                }
+            }
+        }
+        
+        // Game loop
+        function gameLoop() {
+            if (gameState === STATES.MENU) {
+                drawMenuBackground();
+                drawMenu();
+            } else if (gameState === STATES.PLAYING) {
+                if (!isPaused) {
+                    updateKitty();
+                    updateWeapons();
+                    updateZombies();
+                    spawnZombies();
+                    if (mouseDown) shootWeapon();
+                    checkCollisions();
+                }
+                
+                drawBackground();
+                zombies.forEach(drawZombie);
+                weapons.forEach(drawWeapon);
+                drawKitty();
+                
+                ctx.fillStyle = '#fff';
+                ctx.font = 'bold 20px Arial';
+                ctx.textAlign = 'left';
+                const levelName = LEVELS[currentLevel].name;
+                ctx.fillText(`${levelName} - ${zombieKillCount}/${5 + currentLevel * 3}`, 15, 30);
+                
+                if (isPaused) {
+                    ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
+                    ctx.fillRect(0, 0, canvas.width, canvas.height);
+                    ctx.fillStyle = '#fff';
+                    ctx.font = 'bold 56px Arial';
+                    ctx.textAlign = 'center';
+                    ctx.fillText('⏸ PAUSED ⏸', canvas.width / 2, canvas.height / 2);
+                }
+                
+            } else if (gameState === STATES.LEVEL_COMPLETE) {
+                drawBackground();
+                zombies.forEach(drawZombie);
+                drawKitty();
+                drawLevelComplete();
+            } else if (gameState === STATES.GAME_OVER) {
+                drawBackground();
+                drawGameOver();
+            } else if (gameState === STATES.GAME_WON) {
+                ctx.fillStyle = 'rgba(0, 20, 40, 0.8)';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                updateConfetti();
+                drawGameWon();
+            }
+            
+            requestAnimationFrame(gameLoop);
+        }
+        
+        initMenuParticles();
+        startGame();
+    </script>
+</body>
+</html>
